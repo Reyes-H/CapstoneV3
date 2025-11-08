@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -44,15 +45,26 @@ export default function WritingPracticingArea() {
   const [isFirstSubmission, setIsFirstSubmission] = useState(true);
 
   // You can get this from your auth context
-  const userId = "huangyf";
-
-  /* ---------------------------- On Mount ---------------------------- */
+  const userId = useRef("")
+  const router = useRouter();
   const didFetch = useRef(false);
+
   useEffect(() => {
-    if (didFetch.current) return;
-    didFetch.current = true;
-    fetchUserHistory(userId);
-  }, [userId]);
+  if (didFetch.current) return;
+  didFetch.current = true;
+
+  // Read directly from localStorage
+  userId.current = localStorage.getItem("username") || "";
+  console.log(userId.current)
+
+  if (!userId.current) {
+    router.push("/");
+    return;
+  }
+
+  // Use the value directly, not the state (since setUserID is async)
+  fetchUserHistory(userId.current);
+}, []);
 
   /* ---------------------------- Fetch User History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
@@ -112,7 +124,7 @@ export default function WritingPracticingArea() {
       const res = await fetch("http://localhost:5000/writing/get_topic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversation_id, user_id: userId }),
+        body: JSON.stringify({ conversation_id: conversation_id, user_id: userId.current }),
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
@@ -160,7 +172,7 @@ export default function WritingPracticingArea() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: userId.current,
           conversation_id: currentConversation,
           conversation: messages,
           essay:userMessage.content
@@ -194,7 +206,7 @@ export default function WritingPracticingArea() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: userId.current,
           conversation_id: currentConversation,
           conversation: messages,
           query: newMsg.content
@@ -273,7 +285,7 @@ export default function WritingPracticingArea() {
             <CardHeader>
               <CardTitle>
                 Practice Topic
-                {currentConversation && ` (ID ${currentConversation})`}
+                {currentConversation && ` (Practice ${currentConversation})`}
               </CardTitle>
               <CardDescription>Current writing question</CardDescription>
             </CardHeader>

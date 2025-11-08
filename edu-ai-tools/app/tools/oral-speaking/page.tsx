@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -39,11 +40,18 @@ export default function OralSpeakingArea() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<BlobPart[]>([]);
 
-  const userId = "huangyf";
-
+  const userId = useRef("")
+  const router = useRouter();
   /* ---------------------------- On Mount ---------------------------- */
   useEffect(() => {
-    fetchUserHistory(userId);
+    userId.current = localStorage.getItem("username") || "";
+    if (!userId.current) {
+      router.push("/")
+      return;
+    }
+    
+    // Fetch user-specific speaking history after confirming logged-in user
+    fetchUserHistory(userId.current);
   }, []);
 
   /* ---------------------------- Fetch History ---------------------------- */
@@ -93,7 +101,7 @@ export default function OralSpeakingArea() {
       const res = await fetch(endpoints[part], {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId.current }),
       });
       const data = await res.json();
       setMessages((prev) => [
@@ -152,7 +160,7 @@ export default function OralSpeakingArea() {
     }
     const formData = new FormData();
     formData.append("audio", blob);
-    formData.append("user_id", userId);
+    formData.append("user_id", userId.current);
     formData.append("part", String(selectedPart));
 
     try {

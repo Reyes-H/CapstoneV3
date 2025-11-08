@@ -1,13 +1,19 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { Calculator, PenTool, BookOpen, Brain, Home, Menu, X, Headset, PenToolIcon, CircleGauge } from "lucide-react"
+import type React from "react";
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  PenTool,
+  Home,
+  Menu,
+  X,
+  Headset,
+  CircleGauge,
+} from "lucide-react";
 
 const tools = [
   {
@@ -28,21 +34,24 @@ const tools = [
     icon: CircleGauge,
     description: "History & Personal Ability",
   },
-  // {
-  //   name: "Quiz Maker",
-  //   href: "/tools/quiz-maker",
-  //   icon: Brain,
-  //   description: "Build interactive quizzes",
-  // },
-]
+];
 
 export default function ToolsLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const pathname = usePathname()
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // ✅ Handle Logout
+  const handleLogout = () => {
+    // remove username from localStorage
+    localStorage.removeItem("username");
+    // redirect to home (login) page
+    router.push("/");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -68,13 +77,13 @@ export default function ToolsLayout({
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="p-6 border-b border-sidebar-border">
-            <Link
-              href="/"
+            <button
+              onClick={handleLogout}
               className="flex items-center space-x-2 text-sidebar-foreground hover:text-sidebar-primary transition-colors"
             >
               <Home className="h-5 w-5" />
               <span className="font-semibold">Log Out</span>
-            </Link>
+            </button>
           </div>
 
           {/* Navigation */}
@@ -86,8 +95,8 @@ export default function ToolsLayout({
             </div>
 
             {tools.map((tool) => {
-              const Icon = tool.icon
-              const isActive = pathname === tool.href
+              const Icon = tool.icon;
+              const isActive = pathname === tool.href;
 
               return (
                 <Link
@@ -107,27 +116,34 @@ export default function ToolsLayout({
                     <div
                       className={cn(
                         "text-xs truncate",
-                        isActive ? "text-sidebar-primary-foreground/80" : "text-sidebar-foreground/60",
+                        isActive
+                          ? "text-sidebar-primary-foreground/80"
+                          : "text-sidebar-foreground/60",
                       )}
                     >
                       {tool.description}
                     </div>
                   </div>
                 </Link>
-              )
+              );
             })}
           </nav>
 
           {/* Footer */}
           <div className="p-4 border-t border-sidebar-border">
-            <div className="text-xs text-sidebar-foreground/60 text-center">HKU Capstone Project</div>
+            <div className="text-xs text-sidebar-foreground/60 text-center">
+              HKU Capstone Project
+            </div>
           </div>
         </div>
       </div>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
       {/* Main content */}
@@ -135,5 +151,5 @@ export default function ToolsLayout({
         <main className="min-h-screen">{children}</main>
       </div>
     </div>
-  )
+  );
 }

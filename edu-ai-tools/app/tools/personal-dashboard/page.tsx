@@ -1,66 +1,83 @@
 "use client";
-import {Chart as ChartJS, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, CategoryScale, LinearScale} from "chart.js";
-import { Radar, Line } from "react-chartjs-2";
-// Register chart components
-ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend, CategoryScale, LinearScale);
-import type { ChartOptions } from "chart.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
-import { Calculator, ArrowRight, PenTool, Clock, BookOpen, CircleGauge, Headset } from "lucide-react"
 
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+} from "chart.js";
+import { Radar, Line } from "react-chartjs-2";
+import { useEffect, useState, useRef } from "react";
+import type { ChartOptions } from "chart.js";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { PenTool, Headset, ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+// ✅ Register Chart.js components once
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend,
+  CategoryScale,
+  LinearScale
+);
+
+// ✅ Tool cards
 const tools = [
   {
     name: "Writing Practicing Area",
     href: "/tools/writing-practicing",
     icon: PenTool,
-    description: "Practice IELTS writing tasks with AI feedback and personalized topics based on your performance.",
-    features: ["Random IELTS writing topics", "Instant AI feedback and scoring", "Personalized topic suggestions", "Writing improvement tips"],
+    description:
+      "Practice IELTS writing tasks with AI feedback and personalized topics based on your performance.",
+    features: [
+      "Random IELTS writing topics",
+      "Instant AI feedback and scoring",
+      "Personalized topic suggestions",
+      "Writing improvement tips",
+    ],
   },
   {
     name: "Oral Speaking Area",
     href: "/tools/oral-speaking",
     icon: Headset,
-    description: "Practice IELTS speaking with AI voice interaction and get feedback on fluency, pronunciation, and coherence.",
-    features: ["Real-time AI speaking practice", "Fluency and pronunciation feedback", "Topic-based conversation simulation", "Comprehensive speaking score evaluation"],
+    description:
+      "Practice IELTS speaking with AI voice interaction and get feedback on fluency, pronunciation, and coherence.",
+    features: [
+      "Real-time AI speaking practice",
+      "Fluency and pronunciation feedback",
+      "Topic-based conversation simulation",
+      "Comprehensive speaking score evaluation",
+    ],
   },
-]
+];
 
-// Writing radar (Task categories)
-const writingRadarData = {
-  labels: ["Task Achievement", "Coherence", "Lexical Resource", "Grammar Range", "Accuracy"],
-  datasets: [
-    {
-      label: "Writing Skills",
-      data: [80, 70, 82, 75, 68],
-      backgroundColor: "rgba(34, 197, 94, 0.3)",
-      borderColor: "rgba(34, 197, 94, 1)",
-      borderWidth: 2,
-    },
-  ],
-};
-// Speaking radar (Speech performance aspects)
-const speakingRadarData = {
-  labels: ["Fluency", "Pronunciation", "Grammar", "Vocabulary", "Coherence"],
-  datasets: [
-    {
-      label: "Speaking Skills",
-      data: [85, 77, 72, 82, 79],
-      backgroundColor: "rgba(59, 130, 246, 0.3)",
-      borderColor: "rgba(59, 130, 246, 1)",
-      borderWidth: 2,
-    },
-  ],
-};
+// ✅ Common Radar chart options
 const radarOptions: ChartOptions<"radar"> = {
   scales: {
     r: {
       suggestedMin: 0,
-      suggestedMax: 100,
-      ticks: { stepSize: 20, color: "#6b7280" },
+      suggestedMax: 9,
+      ticks: { stepSize: 1.5, color: "#6b7280" },
       grid: { color: "rgba(107, 114, 128, 0.2)" },
       angleLines: { color: "rgba(107, 114, 128, 0.2)" },
-      pointLabels: { color: "#374151", font: { size: 14 } },
+      pointLabels: { color: "#374151", font: { size: 10 } },
     },
   },
   plugins: {
@@ -71,35 +88,7 @@ const radarOptions: ChartOptions<"radar"> = {
   },
 };
 
-
-// Writing performance timeline
-const writingLineData = {
-  labels: ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"],
-  datasets: [
-    {
-      label: "Writing Progress",
-      data: [65, 72, 75, 80, 85],
-      fill: true,
-      borderColor: "rgba(34, 197, 94, 1)",
-      backgroundColor: "rgba(34, 197, 94, 0.25)",
-      tension: 0.3,
-    },
-  ],
-};
-// Speaking performance timeline
-const speakingLineData = {
-  labels: ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"],
-  datasets: [
-    {
-      label: "Speaking Progress",
-      data: [60, 68, 74, 79, 88],
-      fill: true,
-      borderColor: "rgba(59, 130, 246, 1)",
-      backgroundColor: "rgba(59, 130, 246, 0.25)",
-      tension: 0.3,
-    },
-  ],
-};
+// ✅ Line chart options
 const lineOptions: ChartOptions<"line"> = {
   responsive: true,
   scales: {
@@ -121,24 +110,145 @@ const lineOptions: ChartOptions<"line"> = {
   },
 };
 
-
 export default function PersonalDashboardPage() {
+  const [writingData, setWritingData] = useState<any>(null);
+  const [speakingData, setSpeakingData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const userId = useRef("");
+  const router = useRouter();
+
+  // ✅ Fetch data from both endpoints on mount
+  useEffect(() => {
+    userId.current = localStorage.getItem("username") || "";
+
+    if (!userId.current) {
+      router.push("/");
+      return;
+    }
+
+    const fetchDashboard = async () => {
+      try {
+        const [writingRes] = await Promise.all([
+          fetch(
+            `http://127.0.0.1:5000/writing/get_dashboard?user_id=${userId.current}`
+          ),
+          // fetch(
+          //   `http://127.0.0.1:5000/speaking/get_dashboard?user_id=${userId.current}`
+          // ),
+        ]);
+
+        const writingJson = await writingRes.json();
+        // const speakingJson = await speakingRes.json();
+
+        setWritingData(writingJson);
+        // setSpeakingData(speakingJson);
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, [router]);
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-lg text-muted-foreground">
+        Loading your dashboard...
+      </div>
+    );
+  }
+
+  // ✅ Build chart data dynamically
+
+  // Writing Radar
+  const writingRadarData =
+    writingData?.radar_chart && Object.keys(writingData.radar_chart).length > 0
+      ? {
+          labels: Object.keys(writingData.radar_chart),
+          datasets: [
+            {
+              label: "Writing Skills",
+              data: Object.values(writingData.radar_chart),
+              backgroundColor: "rgba(34, 197, 94, 0.3)",
+              borderColor: "rgba(34, 197, 94, 1)",
+              borderWidth: 2,
+            },
+          ],
+        }
+      : null;
+
+  // Speaking Radar
+  const speakingRadarData =
+    speakingData?.radar_chart && Object.keys(speakingData.radar_chart).length > 0
+      ? {
+          labels: Object.keys(speakingData.radar_chart),
+          datasets: [
+            {
+              label: "Speaking Skills",
+              data: Object.values(speakingData.radar_chart),
+              backgroundColor: "rgba(59, 130, 246, 0.3)",
+              borderColor: "rgba(59, 130, 246, 1)",
+              borderWidth: 2,
+            },
+          ],
+        }
+      : null;
+
+  // ✅ Flexible line chart labels generator
+  const makeLabels = (len: number) =>
+    Array.from({ length: len }, (_, i) => `Practice ${i + 1}`);
+
+  // Writing Line
+  const writingLineData =
+    writingData?.line_chart && writingData.line_chart.length > 0
+      ? {
+          labels: makeLabels(writingData.line_chart.length),
+          datasets: [
+            {
+              label: "Writing Progress",
+              data: writingData.line_chart,
+              fill: true,
+              borderColor: "rgba(34, 197, 94, 1)",
+              backgroundColor: "rgba(34, 197, 94, 0.25)",
+              tension: 0.3,
+            },
+          ],
+        }
+      : null;
+
+  // Speaking Line
+  const speakingLineData =
+    speakingData?.line_chart && speakingData.line_chart.length > 0
+      ? {
+          labels: makeLabels(speakingData.line_chart.length),
+          datasets: [
+            {
+              label: "Speaking Progress",
+              data: speakingData.line_chart,
+              fill: true,
+              borderColor: "rgba(59, 130, 246, 1)",
+              backgroundColor: "rgba(59, 130, 246, 0.25)",
+              tension: 0.3,
+            },
+          ],
+        }
+      : null;
+
   return (
     <div className="p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">Personal Dashboard</h1>
-        {/* <p className="text-lg text-muted-foreground max-w-2xl">
-          Choose from our collection of AI-powered educational tools designed to enhance your learning experience. Each
-          tool is crafted to help students and educators achieve better outcomes.
-        </p> */}
+        <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-4">
+          Personal Dashboard
+        </h1>
       </div>
 
-      {/* Tools Grid */}
+      {/* Tools Section */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         {tools.map((tool) => {
-          const Icon = tool.icon
-
+          const Icon = tool.icon;
           return (
             <Card
               key={tool.href}
@@ -151,17 +261,21 @@ export default function PersonalDashboardPage() {
                   </div>
                   <CardTitle className="text-xl">{tool.name}</CardTitle>
                 </div>
-                <CardDescription className="text-base leading-relaxed">{tool.description}</CardDescription>
+                <CardDescription className="text-base leading-relaxed">
+                  {tool.description}
+                </CardDescription>
               </CardHeader>
 
               <CardContent className="pt-0">
                 <div className="mb-4">
-                  <h4 className="text-sm font-medium text-foreground mb-2">Key Features:</h4>
+                  <h4 className="text-sm font-medium text-foreground mb-2">
+                    Key Features:
+                  </h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    {tool.features.map((feature, index) => (
-                      <li key={index} className="flex items-center space-x-2">
-                        <div className="w-1.5 h-1.5 bg-primary rounded-full flex-shrink-0" />
-                        <span>{feature}</span>
+                    {tool.features.map((f, i) => (
+                      <li key={i} className="flex items-center space-x-2">
+                        <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+                        <span>{f}</span>
                       </li>
                     ))}
                   </ul>
@@ -175,101 +289,103 @@ export default function PersonalDashboardPage() {
                 </Link>
               </CardContent>
             </Card>
-          )
+          );
         })}
       </div>
 
       {/* Charts Section */}
       <div className="mt-8 mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Chart 1: Writing Skill Distribution */}
-        <Card className="flex flex-col h-[380px]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-left text-base font-semibold">
-              Writing: Skill Distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex justify-center items-center">
-            <div className="relative w-full h-[280px]">
+        {/* Writing Radar */}
+        <ChartCard
+          title="Writing: Skill Distribution"
+          chart={
+            writingRadarData ? (
               <Radar
                 data={writingRadarData}
-                options={{
-                  ...radarOptions,
-                  maintainAspectRatio: false,
-                }}
+                options={{ ...radarOptions, maintainAspectRatio: false }}
               />
-            </div>
-          </CardContent>
-        </Card>
+            ) : (
+              <NoData />
+            )
+          }
+        />
 
-        {/* Chart 2: Writing Progress Timeline */}
-        <Card className="flex flex-col h-[380px]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-left text-base font-semibold">
-              Writing: Progress Timeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex justify-center items-center">
-            <div className="relative w-full h-[280px]">
+        {/* Writing Line */}
+        <ChartCard
+          title="Writing: Progress Timeline"
+          chart={
+            writingLineData ? (
               <Line
                 data={writingLineData}
-                options={{
-                  ...lineOptions,
-                  maintainAspectRatio: false,
-                }}
+                options={{ ...lineOptions, maintainAspectRatio: false }}
               />
-            </div>
-          </CardContent>
-        </Card>
+            ) : (
+              <NoData />
+            )
+          }
+        />
 
-        {/* Chart 3: Speaking Skill Distribution */}
-        <Card className="flex flex-col h-[380px]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-left text-base font-semibold">
-              Speaking: Skill Distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex justify-center items-center">
-            <div className="relative w-full h-[280px]">
+        {/* Speaking Radar */}
+        <ChartCard
+          title="Speaking: Skill Distribution"
+          chart={
+            speakingRadarData ? (
               <Radar
                 data={speakingRadarData}
-                options={{
-                  ...radarOptions,
-                  maintainAspectRatio: false,
-                }}
+                options={{ ...radarOptions, maintainAspectRatio: false }}
               />
-            </div>
-          </CardContent>
-        </Card>
+            ) : (
+              <NoData />
+            )
+          }
+        />
 
-        {/* Chart 4: Speaking Progress Timeline */}
-        <Card className="flex flex-col h-[380px]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-left text-base font-semibold">
-              Speaking: Progress Timeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 flex justify-center items-center">
-            <div className="relative w-full h-[280px]">
+        {/* Speaking Line */}
+        <ChartCard
+          title="Speaking: Progress Timeline"
+          chart={
+            speakingLineData ? (
               <Line
                 data={speakingLineData}
-                options={{
-                  ...lineOptions,
-                  maintainAspectRatio: false,
-                }}
+                options={{ ...lineOptions, maintainAspectRatio: false }}
               />
-            </div>
-          </CardContent>
-        </Card>
+            ) : (
+              <NoData />
+            )
+          }
+        />
       </div>
-
-      {/* Coming Soon Section */}
-      {/* <div className="mt-12 p-6 bg-muted/50 rounded-lg border border-dashed border-border">
-        <h3 className="text-lg font-semibold text-foreground mb-2">More Tools Coming Soon</h3>
-        <p className="text-muted-foreground">
-          We're constantly working on new AI-powered educational tools. Stay tuned for language learning assistants,
-          science experiment generators, and much more!
-        </p>
-      </div> */}
     </div>
-  )
+  );
+}
+
+// ✅ Reusable Chart Card Component
+function ChartCard({
+  title,
+  chart,
+}: {
+  title: string;
+  chart: React.ReactNode;
+}) {
+  return (
+    <Card className="flex flex-col h-[380px]">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-left text-base font-semibold">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 flex justify-center items-center">
+        <div className="relative w-full h-[280px]">{chart}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ✅ Simple No Data placeholder
+function NoData() {
+  return (
+    <div className="text-center text-muted-foreground h-full flex items-center justify-center">
+      No Practice History
+    </div>
+  );
 }
