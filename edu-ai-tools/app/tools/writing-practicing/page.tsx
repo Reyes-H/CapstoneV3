@@ -269,34 +269,54 @@ export default function WritingPracticingArea() {
       <div className="flex flex-col lg:flex-row gap-8">
         {/* LEFT SECTION */}
         <div className="flex-1 flex flex-col gap-6">
-          <Card className="flex-1 min-h-[380px]">
+          <Card className="flex-1 min-h-[380px] flex flex-col">
             <CardHeader>
               <CardTitle>
                 Practice Topic
-                {currentConversation && ` (ID ${currentConversation})`}
+                {currentConversation && ` (ID ${currentConversation})`}
               </CardTitle>
               <CardDescription>Current writing question</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4">
+            <CardContent
+              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4"
+              style={{
+                maxHeight: "60vh", // Limits height to 60% of viewport
+                scrollbarWidth: "thin",
+              }}
+            >
               {messages.map((msg) => (
                 <div
                   key={msg.message_id}
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    msg.role === "bot"
-                      ? "bg-primary/10 text-left"
-                      : "bg-green-600 text-white text-right ml-auto"
+                  className={`flex w-full ${
+                    msg.role === "bot" ? "justify-start" : "justify-end"
                   }`}
                 >
                   <div
-                    className={`prose prose-sm max-w-none break-words 
-                      [&_pre]:whitespace-pre-wrap [&_pre]:break-words 
-                      [&_pre]:overflow-x-auto [&_pre]:bg-muted/40 
-                      [&_pre]:p-3 [&_pre]:rounded-md 
-                      ${msg.role === "user" ? "prose-invert" : ""}`}
+                    className={`px-4 py-3 rounded-lg break-words shadow-sm ${
+                      msg.role === "bot"
+                        ? "bg-primary/10 text-foreground text-left"
+                        : "bg-green-600 text-white text-left"
+                    }`}
+                    style={{
+                      maxWidth: "80%", // keeps it readable
+                      width: "fit-content", // auto width
+                      wordBreak: "break-word",
+                    }}
                   >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {msg.content}
-                    </ReactMarkdown>
+                    <div
+                      className={`prose prose-sm max-w-none 
+                        [&_pre]:whitespace-pre-wrap [&_pre]:break-words 
+                        [&_pre]:overflow-x-auto [&_pre]:bg-muted/40 
+                        [&_pre]:p-3 [&_pre]:rounded-md 
+                        ${msg.role === "user" ? "prose-invert" : ""}`}
+                      style={{
+                        textAlign: "left", // ensure p tags render left-aligned
+                      }}
+                    >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               ))}
