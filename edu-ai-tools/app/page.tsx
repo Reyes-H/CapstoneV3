@@ -110,6 +110,18 @@ export default function HomePage() {
             >
               Login
             </Button>
+
+            {/* New Register Button */}
+            <div className="">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-white/30 text-white hover:bg-white/40"
+                onClick={() => router.push("/register")}
+              >
+                Register a new account
+              </Button>
+            </div>
           </form>
         </div>
 
