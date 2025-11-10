@@ -20,9 +20,10 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { v4 as uuidv4} from 'uuid';
 
 interface Message {
-  message_id: number;
+  message_id: string;
   role: "bot" | "user";
   content: string;
 }
@@ -34,7 +35,7 @@ interface HistoryItem {
 
 export default function WritingPracticingArea() {
   const [messages, setMessages] = useState<Message[]>([
-    { message_id: 1, role: "bot", content: "Loading..." },
+    { message_id: uuidv4(), role: "bot", content: "Loading..." },
   ]);
   const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [currentConversation, setCurrentConversation] = useState<number | null>(
@@ -48,20 +49,21 @@ export default function WritingPracticingArea() {
   const userId = useRef("")
   const router = useRouter();
   const didFetch = useRef(false);
-
+  
   useEffect(() => {
-  if (didFetch.current) return;
-  didFetch.current = true;
+    
+    if (didFetch.current) return;
+    didFetch.current = true;
 
-  // Read directly from localStorage
-  userId.current = localStorage.getItem("username") || "";
-  console.log(userId.current)
+    // Read directly from localStorage
+    userId.current = localStorage.getItem("username") || "";
+    console.log(userId.current)
 
-  if (!userId.current) {
-    router.push("/");
-    return;
+    if (!userId.current) {
+      router.push("/");
+      return;
   }
-
+  
   // Use the value directly, not the state (since setUserID is async)
   fetchUserHistory(userId.current);
 }, []);
@@ -110,7 +112,7 @@ export default function WritingPracticingArea() {
       console.error("fetchUserHistory failed:", err);
       setMessages([
         {
-          message_id: Date.now(),
+          message_id: uuidv4(),
           role: "bot",
           content: "⚠️ Failed to load history from server.",
         },
@@ -129,13 +131,30 @@ export default function WritingPracticingArea() {
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
       setMessages(data);
+      // 立刻同步到 histories 中对应会话
+      setHistories((prev) => {
+        const exists = prev.some((h) => h.conversation_id === conversation_id);
+        if (exists) {
+          return prev.map((h) =>
+            h.conversation_id === conversation_id
+              ? { ...h, conversation: Array.isArray(data) ? data : h.conversation }
+              : h
+          );
+        }
+        const newItem = {
+          conversation_id,
+          title: `Practice ${conversation_id}`,
+          conversation: Array.isArray(data) ? data : [],
+        };
+        return [...prev, newItem];
+      });
       
       setIsFirstSubmission(true);
     } catch (err) {
       console.error("Failed to fetch topic:", err);
       setMessages([
         {
-          message_id: Date.now(),
+          message_id: uuidv4(),
           role: "bot",
           content: "⚠️ Unable to fetch topic from server.",
         },
@@ -148,7 +167,7 @@ export default function WritingPracticingArea() {
     if (!input.trim() && !selectedFile) return;
     if (isFirstSubmission) {
       await handleEvaluate();
-      setIsFirstSubmission(false);
+      setIsFirstSubmission(false)
     } else {
       await handleContinue();
     }
@@ -157,13 +176,20 @@ export default function WritingPracticingArea() {
   async function handleEvaluate() {
     if (!currentConversation) return;
     const userMessage: Message = {
-      message_id: Date.now(),
+      message_id: uuidv4(),
       role: "user",
       content: selectedFile ? `📎 ${selectedFile.name}` : input,
     };
 
-    const newList = [...messages, userMessage];
-    setMessages(newList);
+    const loadingMessage: Message = {
+      message_id: uuidv4(),
+      role: "bot",
+      content: "Evaluating ...",
+    };
+
+    // const newMessages = [...messages, userMessage, loadingMessage]; // ✅ 直接创建新数组
+    // setMessages(newMessages); // ✅ 更新 UI
+    setMessages(prev => [...prev, userMessage, loadingMessage])
     setInput("");
     setSelectedFile(null);
 
@@ -174,17 +200,36 @@ export default function WritingPracticingArea() {
         body: JSON.stringify({
           user_id: userId.current,
           conversation_id: currentConversation,
-          conversation: messages,
+          conversation: [...messages, userMessage],
           essay:userMessage.content
         }),
       });
       const data = await res.json();
-      setMessages(data);
+      
+      setMessages(data)
+      // 立刻同步到 histories 中当前会话
+      setHistories((prev) => {
+        const exists = prev.some((h) => h.conversation_id === currentConversation);
+        if (exists) {
+          return prev.map((h) =>
+            h.conversation_id === currentConversation
+              ? { ...h, conversation: Array.isArray(data) ? data : h.conversation }
+              : h
+          );
+        }
+        // 如果当前会话不存在，则创建一条
+        const newItem = {
+          conversation_id: currentConversation,
+          title: `Practice ${currentConversation}`,
+          conversation: Array.isArray(data) ? data : [],
+        };
+        return [...prev, newItem];
+      });
     } catch (err) {
       console.error("evaluate failed:", err);
       setMessages((p) => [
         ...p,
-        { message_id: Date.now(), role: "bot", content: "⚠️ Failed evaluation." },
+        { message_id: uuidv4(), role: "bot", content: "⚠️ Failed evaluation." },
       ]);
     }
   }
@@ -192,11 +237,18 @@ export default function WritingPracticingArea() {
   async function handleContinue() {
     if (!currentConversation) return;
     const newMsg: Message = {
-      message_id: Date.now(),
+      message_id: uuidv4(),
       role: "user",
       content: selectedFile ? `📎 ${selectedFile.name}` : input,
     };
-    const newList = [...messages, newMsg];
+
+    const loadingMessage: Message = {
+      message_id: uuidv4(),
+      role: "bot",
+      content: "Loading ...",
+    };
+
+    const newList = [...messages, newMsg, loadingMessage];
     setMessages(newList);
     setInput("");
     setSelectedFile(null);
@@ -208,17 +260,34 @@ export default function WritingPracticingArea() {
         body: JSON.stringify({
           user_id: userId.current,
           conversation_id: currentConversation,
-          conversation: messages,
+          conversation: [...messages, newMsg],
           query: newMsg.content
         }),
       });
       const data = await res.json();
       setMessages(data);
+      // 立刻同步到 histories 中当前会话
+      setHistories((prev) => {
+        const exists = prev.some((h) => h.conversation_id === currentConversation);
+        if (exists) {
+          return prev.map((h) =>
+            h.conversation_id === currentConversation
+              ? { ...h, conversation: Array.isArray(data) ? data : h.conversation }
+              : h
+          );
+        }
+        const newItem = {
+          conversation_id: currentConversation,
+          title: `Practice ${currentConversation}`,
+          conversation: Array.isArray(data) ? data : [],
+        };
+        return [...prev, newItem];
+      });
     } catch (err) {
       console.error("continue failed:", err);
       setMessages((p) => [
         ...p,
-        { message_id: Date.now(), role: "bot", content: "⚠️ Continue request failed." },
+        { message_id: uuidv4(), role: "bot", content: "⚠️ Continue request failed." },
       ]);
     }
   }
@@ -235,7 +304,7 @@ export default function WritingPracticingArea() {
     if (found) setMessages(found.conversation);
     else
       setMessages([
-        { message_id: 1, role: "bot", content: `Loaded practice ${id}.` },
+        { message_id: uuidv4(), role: "bot", content: `Loaded practice ${id}.` },
       ]);
   };
 
@@ -255,7 +324,7 @@ export default function WritingPracticingArea() {
   setCurrentConversation(newId);
 
   // 关键：先清空当前 messages
-  setMessages([{ message_id: Date.now(), role: "bot", content: "Loading..." }]);
+  setMessages([{ message_id: uuidv4(), role: "bot", content: "Loading..." }]);
   setIsFirstSubmission(true);
 
   await fetchTopic(newId);

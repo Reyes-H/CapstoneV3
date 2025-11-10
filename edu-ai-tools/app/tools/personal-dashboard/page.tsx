@@ -128,20 +128,20 @@ export default function PersonalDashboardPage() {
 
     const fetchDashboard = async () => {
       try {
-        const [writingRes] = await Promise.all([
+        const [writingRes, speakingRes] = await Promise.all([
           fetch(
             `http://127.0.0.1:5000/writing/get_dashboard?user_id=${userId.current}`
           ),
-          // fetch(
-          //   `http://127.0.0.1:5000/speaking/get_dashboard?user_id=${userId.current}`
-          // ),
+          fetch(
+            `http://127.0.0.1:5000/oral/get_dashboard?user_id=${userId.current}`
+          ),
         ]);
 
         const writingJson = await writingRes.json();
-        // const speakingJson = await speakingRes.json();
+        const speakingJson = await speakingRes.json();
 
         setWritingData(writingJson);
-        // setSpeakingData(speakingJson);
+        setSpeakingData(speakingJson);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {

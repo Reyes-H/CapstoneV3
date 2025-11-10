@@ -10,114 +10,369 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Mic, RotateCcw, Volume2, Plus, MessageSquare } from "lucide-react";
+import { Mic, RotateCcw, Plus, MessageSquare, Volume2 } from "lucide-react";
+import { Play, Pause } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { v4 as uuidv4 } from "uuid";
 
 interface Message {
-  message_id: number;
+  message_id: string;
   role: "bot" | "user";
   content: string;
+  conversation_id: number; // 新增：消息所属会话
+  part: number | null; // 新增：消息对应的 part（问题/反馈/用户动作）
+  audio?: string; // 新增：音频数据（base64 编码）
 }
 
 interface HistoryItem {
   conversation_id: number;
   title: string;
   conversation: Message[];
+  selected_part: number | null; // 新增：会话当前选定的 part
+}
+
+/* ---------------------------- Audio Player Component ---------------------------- */
+function AudioPlayer({ audioData }: { audioData: string }) {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // 将 base64 音频数据转换为可播放的 URL
+    try {
+      if (!audioData || audioData.trim() === "") {
+        setError("No audio data");
+        return;
+      }
+
+      // 如果音频数据已经是 data URL 格式，直接使用
+      if (audioData.startsWith("data:")) {
+        setAudioUrl(audioData);
+        setError(null);
+      } else {
+        // 否则，假设是纯 base64 字符串，添加 data URL 前缀
+        // 根据后端代码，音频格式是 wav
+        // 清理可能的空白字符
+        const cleanAudioData = audioData.trim();
+        const base64Audio = `data:audio/wav;base64,${cleanAudioData}`;
+        setAudioUrl(base64Audio);
+        setError(null);
+      }
+    } catch (error) {
+      console.error("Failed to create audio URL:", error);
+      setError("Failed to load audio");
+    }
+  }, [audioData]);
+
+  const handlePlayPause = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch((err) => {
+          console.error("Error playing audio:", err);
+          setError("Failed to play audio");
+          setIsPlaying(false);
+        });
+      }
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+  };
+
+  const handleError = () => {
+    setIsPlaying(false);
+    setError("Audio playback error");
+  };
+
+  if (error) {
+    return <span className="text-xs text-muted-foreground">{error}</span>;
+  }
+
+  if (!audioUrl) {
+    return <span className="text-xs text-muted-foreground">Loading audio...</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handlePlayPause}
+        className="h-8 w-8 p-0 rounded-full border hover:bg-primary/10"
+        disabled={!audioUrl}
+        aria-label={isPlaying ? "Pause audio" : "Play audio"}
+        title={isPlaying ? "Pause" : "Play"}
+      >
+        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </Button>
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        onEnded={handleEnded}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onError={handleError}
+        className="hidden"
+        preload="auto"
+      />
+    </div>
+  );
+}
+
+/* ---------------------------- Utils ---------------------------- */
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result === "string") {
+        // 使用 webm 作为默认容器类型（与 MediaRecorder 设置一致）
+        const base64 = result.split(",")[1] || "";
+        resolve(`data:audio/webm;base64,${base64}`);
+      } else {
+        reject(new Error("Failed to read blob as base64"));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 export default function OralSpeakingArea() {
-  const [messages, setMessages] = useState<Message[]>([
-    { message_id: 1, role: "bot", content: "🎙️ Welcome to the Oral Speaking Area!" },
-  ]);
+  const router = useRouter();
+  const userId = useRef("");
+
   const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [currentConversation, setCurrentConversation] = useState<number | null>(
     null
   );
+
+  // 将 messages 视图状态从历史中派生：当前会话的消息
+  const [messages, setMessages] = useState<Message[]>([]);
+
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null); //音频文件
-  const [selectedPart, setSelectedPart] = useState<number | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<BlobPart[]>([]);
 
-  const userId = useRef("")
-  const router = useRouter();
+  /* ---------------------------- Helpers ---------------------------- */
+  const getCurrentHistory = (): HistoryItem | null => {
+    if (currentConversation == null) return null;
+    return histories.find((h) => h.conversation_id === currentConversation) || null;
+  };
+
+  const deriveMessagesFromHistories = (hist: HistoryItem[] = histories, convId: number | null = currentConversation) => {
+    if (convId == null) {
+      setMessages([]);
+      return;
+    }
+    const conv = hist.find((h) => h.conversation_id === convId);
+    if (!conv) {
+      setMessages([]);
+      return;
+    }
+    if (!conv.conversation || conv.conversation.length === 0) {
+      setMessages([
+        {
+          message_id: uuidv4(),
+          role: "bot",
+          content: "🎙️ Welcome to the Oral Speaking Area!",
+          conversation_id: convId,
+          part: null,
+        },
+      ]);
+      return;
+    }
+    setMessages(conv.conversation);
+  };
+
   /* ---------------------------- On Mount ---------------------------- */
   useEffect(() => {
     userId.current = localStorage.getItem("username") || "";
     if (!userId.current) {
-      router.push("/")
+      router.push("/");
       return;
     }
-    
-    // Fetch user-specific speaking history after confirming logged-in user
     fetchUserHistory(userId.current);
   }, []);
+
+  /* ---------------------------- Sync messages when currentConversation or histories change ---------------------------- */
+  useEffect(() => {
+    deriveMessagesFromHistories();
+  }, [currentConversation, histories]);
 
   /* ---------------------------- Fetch History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
     try {
       const res = await fetch(
-        `http://localhost:5000/speaking/get_history?user_id=${user_id}`,
+        `http://localhost:5000/oral/get_history?user_id=${user_id}`,
         { method: "GET", headers: { "Content-Type": "application/json" } }
       );
       const json = await res.json();
-      const data: HistoryItem[] = Array.isArray(json.history)
-        ? json.history
-        : [];
-      if (data.length === 0) {
+      const rawData: any[] = Array.isArray(json.history) ? json.history : [];
+
+      // 兼容：确保每条历史有 selected_part，消息中有 conversation_id 和 part
+      const normalized: HistoryItem[] = rawData.map((item, idx) => {
+        const cid: number =
+          typeof item.conversation_id === "number"
+            ? item.conversation_id
+            : idx + 1;
+        const selPart: number | null =
+          typeof item.selected_part === "number" ? item.selected_part : null;
+
+        const conv: Message[] = Array.isArray(item.conversation)
+          ? item.conversation.map((m: any) => ({
+              message_id: m.message_id || uuidv4(),
+              role: m.role === "user" || m.role === "bot" ? m.role : "bot",
+              content: typeof m.content === "string" ? m.content : "",
+              conversation_id: typeof m.conversation_id === "number" ? m.conversation_id : cid,
+              part:
+                typeof m.part === "number"
+                  ? m.part
+                  : selPart ?? null,
+              audio: typeof m.audio === "string" ? m.audio : undefined,
+            }))
+          : [];
+
+        return {
+          conversation_id: cid,
+          title:
+            typeof item.title === "string" ? item.title : `Session ${cid}`,
+          conversation: conv,
+          selected_part: selPart,
+        };
+      });
+
+      if (normalized.length === 0) {
         const newConvId = 1;
-        setHistories([
-          { conversation_id: newConvId, title: `Session ${newConvId}`, conversation: [] },
-        ]);
+        const initial: HistoryItem = {
+          conversation_id: newConvId,
+          title: `Session ${newConvId}`,
+          conversation: [
+            {
+              message_id: uuidv4(),
+              role: "bot",
+              content: "🎙️ Welcome to the Oral Speaking Area!",
+              conversation_id: newConvId,
+              part: null,
+            },
+          ],
+          selected_part: null,
+        };
+        setHistories([initial]);
         setCurrentConversation(newConvId);
+        setMessages(initial.conversation);
       } else {
-        const last = data[data.length - 1];
-        setHistories(data);
+        const last = normalized[normalized.length - 1];
+        setHistories(normalized);
         setCurrentConversation(last.conversation_id);
         setMessages(
           last.conversation.length
             ? last.conversation
-            : [{ message_id: Date.now(), role: "bot", content: "Start your first speaking practice." }]
+            : [
+                {
+                  message_id: uuidv4(),
+                  role: "bot",
+                  content: "Start your first speaking practice.",
+                  conversation_id: last.conversation_id,
+                  part: null,
+                },
+              ]
         );
       }
     } catch (err) {
       console.error(err);
-      setMessages([
-        { message_id: Date.now(), role: "bot", content: "⚠️ Failed to load speaking history." },
-      ]);
+      const fallbackId = 1;
+      const fallback: HistoryItem = {
+        conversation_id: fallbackId,
+        title: `Session ${fallbackId}`,
+        conversation: [
+          {
+            message_id: uuidv4(),
+            role: "bot",
+            content: "⚠️ Failed to load speaking history.",
+            conversation_id: fallbackId,
+            part: null,
+          },
+        ],
+        selected_part: null,
+      };
+      setHistories([fallback]);
+      setCurrentConversation(fallbackId);
+      setMessages(fallback.conversation);
     }
   }
 
   /* ---------------------------- Fetch Part Topic ---------------------------- */
   async function fetchSpeakingPart(part: number) {
-    const endpoints: Record<number, string> = {
-      1: "http://localhost:5000/speaking/get_part1",
-      2: "http://localhost:5000/speaking/get_part2",
-      3: "http://localhost:5000/speaking/get_part3",
-    };
-    setSelectedPart(part);
+    if (!currentConversation) {
+      alert("No active session. Please start a new session first.");
+      return;
+    }
+
+    // const endpoints: Record<number, string> = {
+    //   1: "http://localhost:5000/oral/get_part1",
+    //   2: "http://localhost:5000/oral/get_part2",
+    //   3: "http://localhost:5000/oral/get_part3",
+    // };
+
+    // 更新当前会话的 selected_part
+    setHistories((prev) =>
+      prev.map((h) =>
+        h.conversation_id === currentConversation
+          ? { ...h, selected_part: part }
+          : h
+      )
+    );
+    console.log("user_id:", userId.current)
+    console.log("conversation_id:", currentConversation)
+    console.log("part:", part)
     try {
-      const res = await fetch(endpoints[part], {
+      const res = await fetch("http://localhost:5000/oral/get_topic", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId.current }),
+        body: JSON.stringify({
+          user_id: userId.current, 
+          conversation_id: currentConversation,
+          part: part
+        }),
       });
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          message_id: Date.now(),
-          role: "bot",
-          content: data.question || `🎯 Fetched Part ${part} question.`,
-        },
-      ]);
+      
+      // 将题目作为 bot 消息加入当前会话
+      setHistories((prev) =>
+        prev.map((h) => {
+          if (h.conversation_id !== currentConversation) return h;
+          const newMsg: Message = {
+            message_id: uuidv4(),
+            role: "bot",
+            content: data.question || `🎯 Fetched Part ${part} question.`,
+            conversation_id: h.conversation_id,
+            part,
+          };
+          return { ...h, conversation: [...h.conversation, newMsg] };
+        })
+      );
     } catch (err) {
       console.error(`Failed to fetch speaking part ${part}`, err);
-      setMessages((p) => [
-        ...p,
-        { message_id: Date.now(), role: "bot", content: `⚠️ Unable to fetch Part ${part} question.` },
-      ]);
+      setHistories((prev) =>
+        prev.map((h) => {
+          if (h.conversation_id !== currentConversation) return h;
+          const newMsg: Message = {
+            message_id: uuidv4(),
+            role: "bot",
+            content: `⚠️ Unable to fetch Part ${part} question.`,
+            conversation_id: h.conversation_id,
+            part,
+          };
+          return { ...h, conversation: [...h.conversation, newMsg] };
+        })
+      );
     }
   }
 
@@ -132,15 +387,40 @@ export default function OralSpeakingArea() {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mediaRecorder = new MediaRecorder(stream);
         mediaRecorderRef.current = mediaRecorder;
-        audioChunks.current = []; //这个是在录音时的temporary音频
+        audioChunks.current = [];
 
         mediaRecorder.ondataavailable = (e) => {
           audioChunks.current.push(e.data);
         };
         mediaRecorder.onstop = async () => {
           const blob = new Blob(audioChunks.current, { type: "audio/webm" });
-          setAudioBlob(blob); //储存整段音频
-          await uploadAudio(blob); //上传音频
+          setAudioBlob(blob);
+
+          // 立即将用户录音渲染到对话
+          const current = getCurrentHistory();
+          const selectedPart = current?.selected_part ?? null;
+          try {
+            const base64 = await blobToBase64(blob);
+            setHistories((prev) =>
+              prev.map((h) => {
+                if (!current || h.conversation_id !== current.conversation_id) return h;
+                const userMsg: Message = {
+                  message_id: uuidv4(),
+                  role: "user",
+                  content: "🎤 Your recording",
+                  conversation_id: h.conversation_id,
+                  part: selectedPart,
+                  audio: base64,
+                };
+                return { ...h, conversation: [...h.conversation, userMsg] };
+              })
+            );
+          } catch (e) {
+            console.error("Failed to convert audio to base64:", e);
+          }
+
+          // 异步上传到后端并等待评估结果，只追加机器人消息
+          uploadAudio(blob);
         };
 
         mediaRecorder.start();
@@ -154,51 +434,87 @@ export default function OralSpeakingArea() {
 
   /* ---------------------------- Upload Audio ---------------------------- */
   async function uploadAudio(blob: Blob) {
+    const current = getCurrentHistory();
+    if (!current) {
+      alert("No active session.");
+      return;
+    }
+    const selectedPart = current.selected_part;
     if (!selectedPart) {
       alert("Please select a speaking part first.");
       return;
     }
+
     const formData = new FormData();
     formData.append("audio", blob);
     formData.append("user_id", userId.current);
     formData.append("part", String(selectedPart));
+    formData.append("conversation_id", String(current.conversation_id));
 
     try {
-      const res = await fetch("http://localhost:5000/speaking/evaluate_audio", {
+      const res = await fetch("http://localhost:5000/oral/evaluate_audio", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        {
-          message_id: Date.now(),
-          role: "user",
-          content: "🎤 Uploaded your audio response.",
-        },
-        {
-          message_id: Date.now() + 1,
-          role: "bot",
-          content:
-            data.assistant ||
-            "✅ Your speaking evaluation has been received!",
-        },
-      ]);
+
+      // 仅追加机器人评估消息（用户消息已在停止录音时插入）
+      setHistories((prev) =>
+        prev.map((h) => {
+          if (h.conversation_id !== current.conversation_id) return h;
+          const botMsg: Message = {
+            message_id: uuidv4(),
+            role: "bot",
+            content:
+              data.assistant || data.text || "✅ Your speaking evaluation has been received!",
+            conversation_id: h.conversation_id,
+            part: selectedPart,
+            audio: data.audio || undefined,
+          };
+          return {
+            ...h,
+            conversation: [...h.conversation, botMsg],
+          };
+        })
+      );
     } catch (err) {
       console.error("Audio upload failed:", err);
-      setMessages((p) => [
-        ...p,
-        { message_id: Date.now(), role: "bot", content: "⚠️ Failed to upload audio." },
-      ]);
+      setHistories((prev) =>
+        prev.map((h) => {
+          if (h.conversation_id !== current.conversation_id) return h;
+          const failMsg: Message = {
+            message_id: uuidv4(),
+            role: "bot",
+            content: "⚠️ Failed to upload audio.",
+            conversation_id: h.conversation_id,
+            part: selectedPart,
+          };
+          return { ...h, conversation: [...h.conversation, failMsg] };
+        })
+      );
     }
   }
 
   const handleReRecord = () => {
+    const current = getCurrentHistory();
     setAudioBlob(null);
-    setMessages((prev) => [
-      ...prev,
-      { message_id: Date.now(), role: "bot", content: "🔁 Ready for a new recording." },
-    ]);
+    const part = current?.selected_part ?? null;
+
+    if (!current) return;
+
+    setHistories((prev) =>
+      prev.map((h) => {
+        if (h.conversation_id !== current.conversation_id) return h;
+        const msg: Message = {
+          message_id: uuidv4(),
+          role: "bot",
+          content: "🔁 Ready for a new recording.",
+          conversation_id: h.conversation_id,
+          part,
+        };
+        return { ...h, conversation: [...h.conversation, msg] };
+      })
+    );
   };
 
   const startNewSession = async () => {
@@ -206,12 +522,28 @@ export default function OralSpeakingArea() {
       histories.length === 0
         ? 1
         : Math.max(...histories.map((h) => h.conversation_id)) + 1;
-    setHistories((p) => [
-      ...p,
-      { conversation_id: newId, title: `Session ${newId}`, conversation: [] },
-    ]);
+
+    const initialMsg: Message = {
+      message_id: uuidv4(),
+      role: "bot",
+      content: "🎙️ New speaking session started!",
+      conversation_id: newId,
+      part: null,
+    };
+
+    const newHistory: HistoryItem = {
+      conversation_id: newId,
+      title: `Session ${newId}`,
+      conversation: [initialMsg],
+      selected_part: null,
+    };
+
+    setHistories((p) => [...p, newHistory]);
     setCurrentConversation(newId);
-    setMessages([{ message_id: 1, role: "bot", content: "🎙️ New speaking session started!" }]);
+
+    // 重置录音相关
+    setAudioBlob(null);
+    setIsRecording(false);
   };
 
   return (
@@ -228,33 +560,71 @@ export default function OralSpeakingArea() {
         </div>
         <p className="text-lg text-muted-foreground">
           Practice your IELTS speaking with real-time microphone input.
-        </p >
+        </p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
         {/* LEFT SECTION */}
         <div className="flex-1 flex flex-col gap-6">
-          <Card className="flex-1 min-h-[380px]">
+          <Card className="flex-1 min-h-[380px] flex flex-col">
             <CardHeader>
               <CardTitle>
                 Speaking Topic
-                {currentConversation && ` (ID ${currentConversation})`}
+                {currentConversation && ` (ID ${currentConversation})`}
               </CardTitle>
               <CardDescription>Current speaking question</CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4">
+            <CardContent
+              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4"
+              style={{
+                maxHeight: "60vh", // Limits height to 60% of viewport
+                scrollbarWidth: "thin",
+              }}
+            >
               {messages.map((msg) => (
                 <div
                   key={msg.message_id}
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    msg.role === "bot"
-                      ? "bg-primary/10 text-left"
-                      : "bg-green-600 text-white text-right ml-auto"
+                  className={`flex w-full ${
+                    msg.role === "bot" ? "justify-start" : "justify-end"
                   }`}
                 >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {msg.content}
-                  </ReactMarkdown>
+                  <div
+                    className={`px-4 py-3 rounded-lg break-words shadow-sm ${
+                      msg.role === "bot"
+                        ? "bg-primary/10 text-foreground text-left"
+                        : "bg-green-600 text-white text-left"
+                    }`}
+                    style={{
+                      maxWidth: "80%", // keeps it readable
+                      width: "fit-content", // auto width
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    <div
+                      className={`prose prose-sm max-w-none 
+                        [&_pre]:whitespace-pre-wrap [&_pre]:break-words 
+                        [&_pre]:overflow-x-auto [&_pre]:bg-muted/40 
+                        [&_pre]:p-3 [&_pre]:rounded-md 
+                        ${msg.role === "user" ? "prose-invert" : ""}`}
+                      style={{
+                        textAlign: "left", // ensure p tags render left-aligned
+                      }}
+                    >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                    {/* 音频播放器 */}
+                    {msg.audio && msg.audio.length > 20 && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <Volume2 className="h-4 w-4 opacity-70" />
+                        <AudioPlayer audioData={msg.audio} />
+                      </div>
+                    )}
+                    <div className="mt-1 text-xs opacity-70">
+                      {`Conv ${msg.conversation_id}`}{msg.part ? ` • Part ${msg.part}` : ""}
+                    </div>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -270,13 +640,16 @@ export default function OralSpeakingArea() {
                 <div
                   key={item.conversation_id}
                   onClick={() => setCurrentConversation(item.conversation_id)}
-                  className={`cursor-pointer p-3 rounded border ${
+                  className={`cursor-pointer p-3 rounded border flex items-center justify-between ${
                     currentConversation === item.conversation_id
                       ? "bg-primary text-white border-primary"
                       : "bg-muted/50 hover:bg-muted"
                   }`}
                 >
-                  {item.title}
+                  <span>{item.title}</span>
+                  <span className="text-xs opacity-80">
+                    {item.selected_part ? `Part ${item.selected_part}` : "No part"}
+                  </span>
                 </div>
               ))}
             </CardContent>
@@ -294,40 +667,62 @@ export default function OralSpeakingArea() {
             <CardContent className="flex flex-col flex-1 space-y-4 items-center justify-center">
               {/* Part buttons vertically centered */}
               <div className="flex flex-col space-y-4 w-2/3">
-                {[1, 2, 3].map((part) => (
-                  <Button
-                    key={part}
-                    variant={selectedPart === part ? "default" : "outline"}
-                    onClick={() => fetchSpeakingPart(part)}
-                    className="py-6 text-lg font-semibold"
-                  >
-                    Part {part}
-                  </Button>
-                ))}
+                {(() => {
+                  const current = getCurrentHistory();
+                  const selectedPart = current?.selected_part ?? null;
+
+                  if (selectedPart === null) {
+                    return [1, 2, 3].map((part) => (
+                      <Button
+                        key={part}
+                        variant="outline"
+                        onClick={() => fetchSpeakingPart(part)}
+                        className="py-6 text-lg font-semibold"
+                      >
+                        Part {part}
+                      </Button>
+                    ));
+                  }
+                  return (
+                    <Button
+                      variant="default"
+                      className="py-6 text-lg font-semibold"
+                    >
+                      Part {selectedPart}
+                    </Button>
+                  );
+                })()}
               </div>
 
               {/* Mic + Re-record row */}
-              <div className="flex items-center justify-center space-x-6 mt-8">
-                <Button
-                  onClick={toggleRecording}
-                  className={`px-8 py-4 text-lg ${
-                    isRecording ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
-                  }`}
-                >
-                  <Mic className="mr-2 h-5 w-5" />
-                  {isRecording ? "Stop & Submit" : "Start Recording"}
-                </Button>
+              {(() => {
+                const current = getCurrentHistory();
+                const selectedPart = current?.selected_part ?? null;
+                if (selectedPart === null) return null;
+                return (
+                  <div className="flex items-center justify-center space-x-6 mt-8">
+                    <Button
+                      onClick={toggleRecording}
+                      className={`px-8 py-4 text-lg ${
+                        isRecording ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
+                      }`}
+                    >
+                      <Mic className="mr-2 h-5 w-5" />
+                      {isRecording ? "Stop & Submit" : "Start Recording"}
+                    </Button>
 
-                <Button
-                  onClick={handleReRecord}
-                  variant="outline"
-                  className="px-8 py-4 text-lg"
-                  disabled={!audioBlob && !isRecording}
-                >
-                  <RotateCcw className="mr-2 h-5 w-5" />
-                  Re-record
-                </Button>
-              </div>
+                    <Button
+                      onClick={handleReRecord}
+                      variant="outline"
+                      className="px-8 py-4 text-lg"
+                      disabled={!audioBlob && !isRecording}
+                    >
+                      <RotateCcw className="mr-2 h-5 w-5" />
+                      Re-record
+                    </Button>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
