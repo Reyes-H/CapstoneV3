@@ -26,6 +26,7 @@ interface Message {
   message_id: string;
   role: "bot" | "user";
   content: string;
+  tips?: string;
 }
 interface HistoryItem {
   conversation_id: number;
@@ -50,6 +51,7 @@ export default function WritingPracticingArea() {
   const router = useRouter();
   const didFetch = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null); // 用于自动滚动到底部
+  const [expandedTips, setExpandedTips] = useState<Set<string>>(new Set());
   
   useEffect(() => {
     
@@ -76,6 +78,15 @@ export default function WritingPracticingArea() {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  const toggleTips = (id: string) => {
+    setExpandedTips((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   /* ---------------------------- Fetch User History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
@@ -409,6 +420,29 @@ export default function WritingPracticingArea() {
                         {msg.content}
                       </ReactMarkdown>
                     </div>
+                    {/* Tips Toggle */}
+                    {msg.tips && msg.tips.trim().length > 0 && (
+                      <div className="mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleTips(msg.message_id)}
+                          className="h-7 px-2 text-xs"
+                        >
+                          {expandedTips.has(msg.message_id) ? "Hide tips" : "Show tips"}
+                        </Button>
+                        {expandedTips.has(msg.message_id) && (
+                          <div className="mt-2 p-3 rounded-md bg-amber-50 text-amber-900 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-100 dark:border-amber-700/40">
+                            <div className="text-xs font-semibold mb-1">Tips</div>
+                            <div className="prose prose-sm max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.tips}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -462,7 +496,7 @@ export default function WritingPracticingArea() {
                 placeholder="Type your answer..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                className="flex-1 min-h-[300px]"
+                className="flex-1 min-h-[300px] max-h-[50vh] overflow-y-auto"
               />
 
               <div className="flex items-center justify-between">

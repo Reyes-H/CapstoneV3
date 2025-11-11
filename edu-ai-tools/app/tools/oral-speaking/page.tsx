@@ -23,6 +23,7 @@ interface Message {
   conversation_id: number; // 新增：消息所属会话
   part: number | null; // 新增：消息对应的 part（问题/反馈/用户动作）
   audio?: string; // 新增：音频数据（base64 编码）
+  tips?: string; // 新增：可选的提示信息（隐藏显示）
 }
 
 interface HistoryItem {
@@ -161,6 +162,7 @@ export default function OralSpeakingArea() {
   const audioChunks = useRef<BlobPart[]>([]);
   const isReRecordingRef = useRef(false); // 标记是否是重新录制操作
   const messagesEndRef = useRef<HTMLDivElement | null>(null); // 用于自动滚动到底部
+  const [expandedTips, setExpandedTips] = useState<Set<string>>(new Set()); // 控制每条消息的tips展开
 
   /* ---------------------------- Helpers ---------------------------- */
   const getCurrentHistory = (): HistoryItem | null => {
@@ -216,6 +218,15 @@ export default function OralSpeakingArea() {
     }
   }, [messages]);
 
+  const toggleTips = (id: string) => {
+    setExpandedTips((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   /* ---------------------------- Fetch History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
     try {
@@ -246,6 +257,7 @@ export default function OralSpeakingArea() {
                   ? m.part
                   : selPart ?? null,
               audio: typeof m.audio === "string" ? m.audio : undefined,
+              tips: typeof m.tips === "string" ? m.tips : undefined,
             }))
           : [];
 
@@ -364,6 +376,7 @@ export default function OralSpeakingArea() {
             content: data.question || `🎯 Fetched Part ${part} question.`,
             conversation_id: h.conversation_id,
             part,
+            tips: typeof data.tips === "string" ? data.tips : undefined,
           };
           return { ...h, conversation: [...h.conversation, newMsg] };
         })
@@ -673,6 +686,29 @@ export default function OralSpeakingArea() {
                         {msg.content}
                       </ReactMarkdown>
                     </div>
+                    {/* Tips Toggle */}
+                    {msg.tips && msg.tips.trim().length > 0 && (
+                      <div className="mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleTips(msg.message_id)}
+                          className="h-7 px-2 text-xs"
+                        >
+                          {expandedTips.has(msg.message_id) ? "Hide tips" : "Show tips"}
+                        </Button>
+                        {expandedTips.has(msg.message_id) && (
+                          <div className="mt-2 p-3 rounded-md bg-amber-50 text-amber-900 border border-amber-200 dark:bg-amber-900/20 dark:text-amber-100 dark:border-amber-700/40">
+                            <div className="text-xs font-semibold mb-1">Tips</div>
+                            <div className="prose prose-sm max-w-none">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.tips}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* 音频播放器 */}
                     {msg.audio && msg.audio.length > 20 && (
                       <div className="mt-3 flex items-center gap-2">
