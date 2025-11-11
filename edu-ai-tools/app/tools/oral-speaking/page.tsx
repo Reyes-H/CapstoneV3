@@ -159,6 +159,8 @@ export default function OralSpeakingArea() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<BlobPart[]>([]);
+  const isReRecordingRef = useRef(false); // 标记是否是重新录制操作
+  const messagesEndRef = useRef<HTMLDivElement | null>(null); // 用于自动滚动到底部
 
   /* ---------------------------- Helpers ---------------------------- */
   const getCurrentHistory = (): HistoryItem | null => {
@@ -205,6 +207,14 @@ export default function OralSpeakingArea() {
   useEffect(() => {
     deriveMessagesFromHistories();
   }, [currentConversation, histories]);
+
+  /* ---------------------------- Auto scroll to bottom when messages update ---------------------------- */
+  useEffect(() => {
+    // 当消息更新时，自动滚动到底部
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   /* ---------------------------- Fetch History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
@@ -384,6 +394,8 @@ export default function OralSpeakingArea() {
       setIsRecording(false);
     } else {
       try {
+        // 重置重新录制标志
+        isReRecordingRef.current = false;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mediaRecorder = new MediaRecorder(stream);
         mediaRecorderRef.current = mediaRecorder;
@@ -393,6 +405,12 @@ export default function OralSpeakingArea() {
           audioChunks.current.push(e.data);
         };
         mediaRecorder.onstop = async () => {
+          // 如果是重新录制操作，不处理停止事件
+          if (isReRecordingRef.current) {
+            isReRecordingRef.current = false;
+            return;
+          }
+
           const blob = new Blob(audioChunks.current, { type: "audio/webm" });
           setAudioBlob(blob);
 
@@ -450,7 +468,8 @@ export default function OralSpeakingArea() {
     formData.append("user_id", userId.current);
     formData.append("part", String(selectedPart));
     formData.append("conversation_id", String(current.conversation_id));
-
+    formData.append("conversation", JSON.stringify(messages));
+    console.log("messages:",messages)
     try {
       const res = await fetch("http://localhost:5000/oral/evaluate_audio", {
         method: "POST",
@@ -497,14 +516,51 @@ export default function OralSpeakingArea() {
 
   const handleReRecord = () => {
     const current = getCurrentHistory();
-    setAudioBlob(null);
-    const part = current?.selected_part ?? null;
-
     if (!current) return;
 
+    const part = current?.selected_part ?? null;
+
+    // 如果正在录制，先停止录制
+    if (isRecording && mediaRecorderRef.current) {
+      try {
+        // 设置重新录制标志，防止 onstop 回调触发上传
+        isReRecordingRef.current = true;
+        mediaRecorderRef.current.stop();
+        // 停止所有音频轨道
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      } catch (e) {
+        console.error("Error stopping recorder:", e);
+        isReRecordingRef.current = false;
+      }
+      setIsRecording(false);
+    }
+
+    // 清理录音相关状态
+    setAudioBlob(null);
+    audioChunks.current = [];
+    mediaRecorderRef.current = null;
+
+    // 移除最后一条用户录音消息（如果存在且是用户消息）
     setHistories((prev) =>
       prev.map((h) => {
         if (h.conversation_id !== current.conversation_id) return h;
+        
+        // 找到最后一条用户消息（录音消息）
+        const lastUserMsgIndex = h.conversation
+          .map((msg, idx) => ({ msg, idx }))
+          .reverse()
+          .find(({ msg }) => msg.role === "user" && msg.content === "🎤 Your recording");
+        
+        let newConversation = [...h.conversation];
+        
+        // 如果找到了用户录音消息，移除它
+        if (lastUserMsgIndex) {
+          newConversation = newConversation.filter(
+            (_, idx) => idx !== lastUserMsgIndex.idx
+          );
+        }
+        
+        // 添加准备重新录制的消息
         const msg: Message = {
           message_id: uuidv4(),
           role: "bot",
@@ -512,7 +568,8 @@ export default function OralSpeakingArea() {
           conversation_id: h.conversation_id,
           part,
         };
-        return { ...h, conversation: [...h.conversation, msg] };
+        
+        return { ...h, conversation: [...newConversation, msg] };
       })
     );
   };
@@ -547,27 +604,30 @@ export default function OralSpeakingArea() {
   };
 
   return (
-    <div className="p-6 lg:p-8">
-      {/* ----------------- HEADER ----------------- */}
-      <div className="mb-8">
-        <div className="flex items-center space-x-3 mb-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <MessageSquare className="h-6 w-6 text-primary" />
+    <div className="h-screen overflow-hidden flex flex-col">
+      <div className="p-6 lg:p-8 flex-shrink-0">
+        {/* ----------------- HEADER ----------------- */}
+        <div className="mb-8">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <MessageSquare className="h-6 w-6 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold text-foreground">
+              Oral Speaking Area
+            </h1>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">
-            Oral Speaking Area
-          </h1>
+          <p className="text-lg text-muted-foreground">
+            Practice your IELTS speaking with real-time microphone input.
+          </p>
         </div>
-        <p className="text-lg text-muted-foreground">
-          Practice your IELTS speaking with real-time microphone input.
-        </p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex-1 overflow-hidden px-6 lg:px-8 pb-6 lg:pb-8">
+        <div className="h-full flex flex-col lg:flex-row gap-8">
         {/* LEFT SECTION */}
-        <div className="flex-1 flex flex-col gap-6">
-          <Card className="flex-1 min-h-[380px] flex flex-col">
-            <CardHeader>
+        <div className="flex-[2] flex flex-col gap-6 min-h-0">
+          <Card className="flex-[2] flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>
                 Speaking Topic
                 {currentConversation && ` (ID ${currentConversation})`}
@@ -575,9 +635,8 @@ export default function OralSpeakingArea() {
               <CardDescription>Current speaking question</CardDescription>
             </CardHeader>
             <CardContent
-              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4"
+              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4 min-h-0"
               style={{
-                maxHeight: "60vh", // Limits height to 60% of viewport
                 scrollbarWidth: "thin",
               }}
             >
@@ -627,15 +686,22 @@ export default function OralSpeakingArea() {
                   </div>
                 </div>
               ))}
+              {/* 用于自动滚动到底部的锚点 */}
+              <div ref={messagesEndRef} />
             </CardContent>
           </Card>
 
-          <Card className="min-h-[220px]">
-            <CardHeader>
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>Session History</CardTitle>
               <CardDescription>Review your speaking sessions</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent 
+              className="flex-1 overflow-y-auto space-y-2"
+              style={{
+                scrollbarWidth: "thin",
+              }}
+            >
               {histories.map((item) => (
                 <div
                   key={item.conversation_id}
@@ -657,10 +723,10 @@ export default function OralSpeakingArea() {
         </div>
 
         {/* RIGHT SECTION */}
-        <div className="flex-1 flex flex-col gap-6">
+        <div className="flex-[1] flex flex-col gap-6 min-h-0">
           {/* Input/Control Area */}
-          <Card className="flex-1 min-h-[600px] flex flex-col">
-            <CardHeader>
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>Speaking Parts</CardTitle>
               <CardDescription>Choose a part and record your response</CardDescription>
             </CardHeader>
@@ -726,9 +792,10 @@ export default function OralSpeakingArea() {
             </CardContent>
           </Card>
 
-          <Button onClick={startNewSession} className="w-full" variant="secondary">
+          <Button onClick={startNewSession} className="w-full flex-shrink-0" variant="secondary">
             <Plus className="h-4 w-4 mr-2" /> Start New Session
           </Button>
+        </div>
         </div>
       </div>
     </div>

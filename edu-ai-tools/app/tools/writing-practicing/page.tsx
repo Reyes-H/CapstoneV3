@@ -49,6 +49,7 @@ export default function WritingPracticingArea() {
   const userId = useRef("")
   const router = useRouter();
   const didFetch = useRef(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null); // 用于自动滚动到底部
   
   useEffect(() => {
     
@@ -67,6 +68,14 @@ export default function WritingPracticingArea() {
   // Use the value directly, not the state (since setUserID is async)
   fetchUserHistory(userId.current);
 }, []);
+
+  /* ---------------------------- Auto scroll to bottom when messages update ---------------------------- */
+  useEffect(() => {
+    // 当消息更新时，自动滚动到底部
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   /* ---------------------------- Fetch User History ---------------------------- */
   async function fetchUserHistory(user_id: string) {
@@ -332,26 +341,29 @@ export default function WritingPracticingArea() {
 
   /* ---------------------------- Render ---------------------------- */
   return (
-    <div className="p-6 lg:p-8">
-      <div className="mb-8">
-        <div className="flex items-center space-x-3 mb-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <PenTool className="h-6 w-6 text-primary" />
+    <div className="h-screen overflow-hidden flex flex-col">
+      <div className="p-6 lg:p-8 flex-shrink-0">
+        <div className="mb-8">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <PenTool className="h-6 w-6 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold text-foreground">
+              Writing Practicing Area
+            </h1>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">
-            Writing Practicing Area
-          </h1>
+          <p className="text-lg text-muted-foreground">
+            Practice your writing skills through simulated IELTS writing topics.
+          </p >
         </div>
-        <p className="text-lg text-muted-foreground">
-          Practice your writing skills through simulated IELTS writing topics.
-        </p >
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex-1 overflow-hidden px-6 lg:px-8 pb-6 lg:pb-8">
+        <div className="h-full flex flex-col lg:flex-row gap-8">
         {/* LEFT SECTION */}
-        <div className="flex-1 flex flex-col gap-6">
-          <Card className="flex-1 min-h-[380px] flex flex-col">
-            <CardHeader>
+        <div className="flex-[2] flex flex-col gap-6 min-h-0">
+          <Card className="flex-[2] flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>
                 Practice Topic
                 {currentConversation && ` (Practice ${currentConversation})`}
@@ -359,9 +371,8 @@ export default function WritingPracticingArea() {
               <CardDescription>Current writing question</CardDescription>
             </CardHeader>
             <CardContent
-              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4"
+              className="flex-1 overflow-y-auto space-y-4 bg-muted/20 rounded-lg p-4 min-h-0"
               style={{
-                maxHeight: "60vh", // Limits height to 60% of viewport
                 scrollbarWidth: "thin",
               }}
             >
@@ -401,16 +412,23 @@ export default function WritingPracticingArea() {
                   </div>
                 </div>
               ))}
+              {/* 用于自动滚动到底部的锚点 */}
+              <div ref={messagesEndRef} />
             </CardContent>
           </Card>
 
           {/* Conversation History */}
-          <Card className="min-h-[220px]">
-            <CardHeader>
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>Conversation History</CardTitle>
               <CardDescription>View your past practices</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent 
+              className="flex-1 overflow-y-auto space-y-2"
+              style={{
+                scrollbarWidth: "thin",
+              }}
+            >
               {histories.map((item) => (
                 <div
                   key={item.conversation_id}
@@ -431,9 +449,9 @@ export default function WritingPracticingArea() {
         </div>
 
         {/* RIGHT SECTION */}
-        <div className="flex-1 flex flex-col gap-6">
-          <Card className="flex-1 min-h-[600px] flex flex-col">
-            <CardHeader>
+        <div className="flex-[1] flex flex-col gap-6 min-h-0">
+          <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0">
               <CardTitle>Input Area</CardTitle>
               <CardDescription>
                 Type your response or attach a file to reply
@@ -481,9 +499,10 @@ export default function WritingPracticingArea() {
             </CardContent>
           </Card>
 
-          <Button onClick={startNewPractice} className="w-full" variant="secondary">
+          <Button onClick={startNewPractice} className="w-full flex-shrink-0" variant="secondary">
             <Plus className="h-4 w-4 mr-2" /> Start New Practice
           </Button>
+        </div>
         </div>
       </div>
     </div>
