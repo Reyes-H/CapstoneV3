@@ -12,7 +12,7 @@ export default function PeronalDahboardPage() {
           <div className="p-2 bg-primary/10 rounded-lg">
             <CircleGauge className="h-6 w-6 text-primary" />
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-foreground">Personal Dashboard</h1>
+          <h1 className="text-3xl lg:text-4xl font-bold text-foreground">Learning Reflection Dashboard</h1>
         </div>
         <p className="text-lg text-muted-foreground">
           Create personalized study materials and summaries for any subject to enhance your learning experience.

@@ -364,7 +364,7 @@ export default function WritingPracticingArea() {
             </h1>
           </div>
           <p className="text-lg text-muted-foreground">
-            Practice your writing skills through simulated IELTS writing topics.
+            Practice your writing skills through simulated IELTS writing topics. Please write an essay based on the topic. Tips are available under the topics for idea inspiration. Multiple submissions are supported. Historical practices are accessible in Conversation History.
           </p >
         </div>
       </div>

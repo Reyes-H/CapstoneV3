@@ -144,7 +144,7 @@ export default function HomePage() {
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-2 mx-auto">
                 <span className="text-xl">🎯</span>
               </div>
-              <p className="text-sm">Personal Dashboard</p >
+              <p className="text-sm">Learning Reflection Dashboard</p >
             </div>
           </div>
         </div>

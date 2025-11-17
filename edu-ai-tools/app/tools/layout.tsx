@@ -29,7 +29,7 @@ const tools = [
     description: "For IELTS Speaking Section",
   },
   {
-    name: "Personal Dashboard",
+    name: "Learning Reflection Dashboard",
     href: "/tools/personal-dashboard",
     icon: CircleGauge,
     description: "History & Personal Ability",

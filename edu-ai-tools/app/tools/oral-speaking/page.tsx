@@ -630,7 +630,7 @@ export default function OralSpeakingArea() {
             </h1>
           </div>
           <p className="text-lg text-muted-foreground">
-            Practice your IELTS speaking with real-time microphone input.
+            Practice your IELTS speaking with real-time microphone input. Please select the part you want to practice and start recording your voice to try answering the question. Tips are available under the topics for idea inspiration. Multiple submissions are supported. Historical practices are accessible in Session History.
           </p>
         </div>
       </div>

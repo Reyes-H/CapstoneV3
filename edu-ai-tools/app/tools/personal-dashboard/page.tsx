@@ -468,7 +468,7 @@ export default function PersonalDashboardPage() {
       {/* Header */}
       <div className="mb-4">
         <h1 className="text-3xl lg:text-4xl font-bold text-foreground mb-2">
-          Personal Dashboard
+          Learning Reflection Dashboard
         </h1>
       </div>
 
@@ -482,7 +482,7 @@ export default function PersonalDashboardPage() {
               <MailOpen className="h-6 w-6 text-muted-foreground" />
             )}
             <div>
-              <CardTitle className="text-xl">Messages</CardTitle>
+              <CardTitle className="text-xl">Personalized Advice</CardTitle>
               <CardDescription>
                 {msgsLoading
                   ? "Fetching your messages..."
